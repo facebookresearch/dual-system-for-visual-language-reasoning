@@ -41,11 +41,3 @@ Among [81.00, 16.00, 3.00], the two smallest values are 16.00 and 3.00 while the
 Q: {question}
 A:
 """.strip()
-
-# two_col_101055, 00268016000832, 4549, two_col_42979, multi_col_1490, two_col_62894, multi_col_41001, 3730.png
-# Q: What was the percentage of the Malaysian population that had access to improved sanitation in 2013?
-# A: What is the value of Malaysian population that had access to improved sanitation in 2013 according to the figure?
-# The value is 96.00.
-# So the answer is 96.00.
-
-# The legends are: 2008 (light blue) | 2009 (light blue) | 2010 (light blue) | 2011 (light blue) | 2012 (light blue) | 2013 (light blue) | 2014 (light blue).
