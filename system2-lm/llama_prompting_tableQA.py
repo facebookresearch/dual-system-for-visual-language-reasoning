@@ -58,7 +58,7 @@ def load(
         checkpoints
     ), f"Loading a checkpoint for MP={len(checkpoints)} but world size is {world_size}"
     ckpt_path = checkpoints[local_rank]
-    with open(Path("./llama/models/{}".format(model_name)) / "params.json", "r") as f:
+    with open(Path(ckpt_dir) / "params.json", "r") as f:
         params = json.loads(f.read())
 
     model_args: ModelArgs = ModelArgs(
@@ -92,14 +92,8 @@ def main(args):
         print(prompt.PROMPT)
 
     # ----------------------------------------------------- #
-    # prepare data
-    # output_dir = './outputs/{}'.format(args.dataset)
-    # if args.local_rank ==0 and not os.path.exists(output_dir):
-    #     os.makedirs(output_dir)
     with open(args.data_path, 'r') as fr:
-        all_lines = json.load(fr)
-        if args.dataset == 'plotQA':
-            all_lines = all_lines['qa_pairs']
+        all_lines = [json.loads(line) for line in fr.readlines()]
 
     batch_size = - (len(all_lines) // - args.num_process)
     testset = all_lines[(args.split*batch_size):(args.split+1)*batch_size]
@@ -117,7 +111,6 @@ def main(args):
     if args.local_rank > 0:
         sys.stdout = open(os.devnull, "w")
 
-    # ckpt_dir = os.path.join(args.ckpt_dir, args.model_name)
     print(args.ckpt_dir)
     generator = load(
         args.ckpt_dir, args.tokenizer_path, args.local_rank, args.world_size, args.max_seq_len, args.eval_batch_size, args.model_name,
@@ -128,11 +121,20 @@ def main(args):
 
     num_batch = - (args.num_beams // - args.eval_batch_size)
     output_path = os.path.join(args.output_prefix, "inference_split{}-{}.jsonl".format(args.split, args.num_process))
-    fw = open(output_path, 'w', buffering=1)
-    for eid, example in enumerate(tqdm(testset)):
+    if os.path.exists(output_path) and (not args.overwrite_prediction):
+        with open(output_path, 'r') as fr:
+            restart_line = int(len(fr.readlines()))
+    else:
+        restart_line = 0
+    fw = open(output_path, 'w' if args.overwrite_prediction else 'a', buffering=1)
+    for eid, example in enumerate(tqdm(testset[restart_line:])):
         if args.dataset == "chartQA":
             image_name = example["imgname"].replace('.png', '')
         elif args.dataset == "plotQA":
+            image_name = str(example["image_index"])
+        elif args.dataset == "dvQA":
+            image_name = str(example["image"]).replace('.png', '')
+        elif args.dataset == "figureQA":
             image_name = str(example["image_index"])
         else:
             print("Not implemented!")
@@ -147,6 +149,10 @@ def main(args):
             question = example["query"]
         elif args.dataset == "plotQA":
             question = example["question_string"]
+        elif args.dataset == "dvQA":
+            question = example["question"]
+        elif args.dataset == "figureQA":
+            question = example["question_string"]
         else:
             print("Not implemented!")
             continue
@@ -157,15 +163,15 @@ def main(args):
         generations = []
         for batch_id in range(num_batch):
             batch_inputs = [input_seq] * min(args.eval_batch_size, args.num_beams - batch_id * args.eval_batch_size)
-            inference = generator.generate_with_past(
+            inference, _, _ = generator.generate_with_past(
                 batch_inputs, max_gen_len=args.max_gen_len, temperature=args.temperature, top_p=args.top_p, top_k=args.top_k
             )
             generations.extend(inference)
 
-        output = example.copy()
-        output["inference"] = [gen.strip() for gen in generations]
-
-        fw.write(json.dumps(output) + "\n")
+        if args.local_rank == 0:
+            output = example.copy()
+            output["inference"] = [gen.strip() for gen in generations]
+            fw.write(json.dumps(output) + "\n")
     fw.close()
 
     # ----------------------------------------------------- #
@@ -184,6 +190,7 @@ if __name__ == "__main__":
     parser.add_argument('--split', type=int, default=0)
     parser.add_argument('--num_process', type=int, default=1)
     parser.add_argument("--debug", action='store_true')
+    parser.add_argument("--overwrite_prediction", action='store_true')
 
     # decoding strategy
     parser.add_argument('--max_seq_len', type=int, default=2048)

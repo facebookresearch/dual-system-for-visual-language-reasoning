@@ -60,7 +60,7 @@ def load(
         checkpoints
     ), f"Loading a checkpoint for MP={len(checkpoints)} but world size is {world_size}"
     ckpt_path = checkpoints[local_rank]
-    with open(Path("./llama/models/{}".format(model_name)) / "params.json", "r") as f:
+    with open(Path(ckpt_dir) / "params.json", "r") as f:
         params = json.loads(f.read())
 
     model_args: ModelArgs = ModelArgs(
@@ -68,6 +68,7 @@ def load(
         max_seq_len=max_seq_len, **params
     )
     tokenizer = Tokenizer(model_path=tokenizer_path)
+    print("Vocab size:", tokenizer.n_words)
     model_args.vocab_size = tokenizer.n_words
     torch.set_default_tensor_type(torch.cuda.HalfTensor)
     model = Transformer(model_args)
@@ -86,7 +87,7 @@ def main(args):
     # ----------------------------------------------------- #
     # decide prompt
     try:
-        prompt = importlib.import_module("prompts.{}.{}".format(args.dataset, args.prompt))
+        prompt = importlib.import_module("prompts.chartQA.{}".format(args.prompt))
     except:
         print("No such prompt!")
         return
@@ -94,14 +95,8 @@ def main(args):
         print(prompt.PROMPT)
 
     # ----------------------------------------------------- #
-    # prepare data
-    # output_dir = './outputs/{}'.format(args.dataset)
-    # if args.local_rank ==0 and not os.path.exists(output_dir):
-    #     os.makedirs(output_dir)
     with open(args.data_path, 'r') as fr:
-        all_lines = json.load(fr)
-        if args.dataset == 'plotQA':
-            all_lines = all_lines['qa_pairs']
+        all_lines = [json.loads(line) for line in fr.readlines()]
 
     batch_size = - (len(all_lines) // - args.num_process)
     testset = all_lines[(args.split*batch_size):(args.split+1)*batch_size]
@@ -113,7 +108,6 @@ def main(args):
     if args.local_rank > 0:
         sys.stdout = open(os.devnull, "w")
 
-    # ckpt_dir = os.path.join(args.ckpt_dir, args.model_name)
     print(args.ckpt_dir)
     generator = load(
         args.ckpt_dir, args.tokenizer_path, args.local_rank, args.world_size, args.max_seq_len, args.eval_batch_size, args.model_name,
@@ -121,9 +115,8 @@ def main(args):
 
     # ----------------------------------------------------- #
     # load pix2struct
-    processor = AutoProcessor.from_pretrained(args.vlqa_name, cache_dir='../hg_cache')
-    if args.vlqa_mode == "decoderQA":
-        processor.image_processor.is_vqa = False
+    processor = AutoProcessor.from_pretrained(args.vlqa_name, cache_dir=os.path.join(args.home_dir, 'hg_cache'))
+    processor.image_processor.is_vqa = False
     model = Pix2StructForConditionalGeneration.from_pretrained(args.vlqa_dir)
     model.eval()
     model.to(args.device)
@@ -132,12 +125,21 @@ def main(args):
     # inference
 
     num_batch = - (args.num_beams // - args.eval_batch_size)
-    output_path = os.path.join(args.output_prefix, "eval_inference_split{}-{}.jsonl".format(args.split, args.num_process))
-    fw = open(output_path, 'w', buffering=1)
-    for eid, example in enumerate(tqdm(testset)):
+    output_path = os.path.join(args.output_prefix, "inference_split{}-{}.jsonl".format(args.split, args.num_process))
+    if os.path.exists(output_path) and (not args.overwrite_prediction):
+        with open(output_path, 'r') as fr:
+            restart_line = len(fr.readlines()) 
+    else:
+        restart_line = 0
+    fw = open(output_path, 'w' if args.overwrite_prediction else 'a', buffering=1)
+    for eid, example in enumerate(tqdm(testset[restart_line:])):
         if args.dataset == "chartQA":
             image_name = example["imgname"].replace('.png', '')
         elif args.dataset == "plotQA":
+            image_name = str(example["image_index"])
+        elif args.dataset == "dvQA":
+            image_name = str(example["image"]).replace('.png', '')
+        elif args.dataset == "figureQA":
             image_name = str(example["image_index"])
         else:
             print("Not implemented!")
@@ -149,25 +151,34 @@ def main(args):
             question = example["query"]
         elif args.dataset == "plotQA":
             question = example["question_string"]
+        elif args.dataset == "dvQA":
+            question = example["question"]
+        elif args.dataset == "figureQA":
+            question = example["question_string"]
         else:
             print("Not implemented!")
             continue
-
+        
         input_seqs = [prompt.PROMPT.format(question=question) for beam_id in range(args.num_beams)]
 
         generations = ["" for beam_id in range(args.num_beams)]
         inferences = ["" for beam_id in range(args.num_beams)]
         beam_finish = [False for beam_id in range(args.num_beams)]
         cnt_query = 0
+        past_key_values = None
+        prev_pos = 0
         while True:
             if args.debug or eid < 5:
                 print(input_seqs[0])
             all_batch_inferences = []
             for batch_id in range(num_batch):
                 batch_input_seqs = input_seqs[batch_id*args.eval_batch_size:min((batch_id+1)*args.eval_batch_size, args.num_beams)]
-                batch_inferences = generator.generate_with_past(
-                    batch_input_seqs, stop_tokens="\n", max_gen_len=args.max_gen_len, temperature=args.temperature, top_p=args.top_p, top_k=args.top_k
-                )
+                try:
+                    batch_inferences, past_key_values, prev_pos = generator.generate_with_past(
+                        batch_input_seqs, stop_tokens="\n", max_gen_len=args.max_gen_len, temperature=args.temperature, top_p=args.top_p, top_k=args.top_k, past_key_values=past_key_values, prev_pos=prev_pos,
+                    )
+                except:
+                    batch_inferences = ["" for beam_id in range(len(batch_input_seqs))]
                 all_batch_inferences.extend(batch_inferences)
 
             for beam_id in range(args.num_beams):
@@ -192,21 +203,37 @@ def main(args):
                     continue
                 inference = all_batch_inferences[beam_id]
                 if "Let's" in inference:
-                    if args.vlqa_mode == "decoderQA":
-                        vl_inputs = processor(images=image, return_tensors="pt", add_special_tokens=True, max_patches=args.max_patches).to(args.device)
-                        question_ids = processor.tokenizer(text=[inference], return_tensors="pt", add_special_tokens=False).input_ids.to(args.device)
-                        input_length = len(question_ids[0])
-                        vl_output = model.generate(**vl_inputs, decoder_input_ids=question_ids, max_new_tokens=args.max_vlqa_len)[0]
-                        inference = processor.decode(vl_output[input_length+1:], skip_special_tokens=True)
-                    else:
-                        vl_inputs = processor(images=image, text=inference, return_tensors="pt", add_special_tokens=True, max_patches=args.max_patches).to(args.device)
-                        vl_output = model.generate(**vl_inputs, max_new_tokens=args.max_vlqa_len)[0]
-                        inference = processor.decode(vl_output, skip_special_tokens=True)
+                    inference = "Q: " + inference.strip() + " A:"
+                    vl_inputs = processor(images=image, return_tensors="pt", add_special_tokens=True, max_patches=args.max_patches).to(args.device)
+                    question_ids = processor.tokenizer(text=[inference], return_tensors="pt", add_special_tokens=False).input_ids.to(args.device)
+                    input_length = len(question_ids[0])
+                    vl_output = model.generate(**vl_inputs, decoder_input_ids=question_ids, max_new_tokens=args.max_vlqa_len)[0]
+                    inference = processor.decode(vl_output[input_length+1:], skip_special_tokens=True)
+                    if "The x-axis shows: " in inference:
+                        xaxis = inference.split('The x-axis shows: ')[1]
+                        new_inference = inference.split('The x-axis shows: ')[0] + 'The x-axis shows: '
+                        visited = set()
+                        nxaxis = []
+                        for xi, x in enumerate(xaxis.split(' | ')):
+                            x = x.strip()
+                            if xi == len(xaxis.split(' | ')) - 1 and x.endswith('.'):
+                                x = x[:-1]
+                            if x in visited:
+                                continue
+                            visited.add(x)
+                            nxaxis.append(x)
+                        new_inference += " | ".join(nxaxis) + "."
+                        inference = new_inference
                 else:
-                    inference = generator.generate_with_past(
-                        [input_seqs[beam_id]], stop_tokens="\n", max_gen_len=args.max_gen_len, temperature=args.temperature, top_p=args.top_p, top_k=args.top_k
-                    )[0]
+                    try:
+                        inference, past_key_values, prev_pos = generator.generate_with_past(
+                            [input_seqs[beam_id]], stop_tokens="\n", max_gen_len=args.max_gen_len, temperature=args.temperature, top_p=args.top_p, top_k=args.top_k,  past_key_values=past_key_values, prev_pos=prev_pos,
+                        )
+                    except:
+                        inference = [""]
+                    inference = inference[0]
                 generations[beam_id] += inference.strip() + "\n"
+
                 input_seqs[beam_id] += inference.strip() + "\n"
                 if "answer" in inference:
                     beam_finish[beam_id] = True
@@ -215,12 +242,11 @@ def main(args):
             if all(beam_finish) or cnt_query > 9:
                 break
             cnt_query += 1
-
         output = example.copy()
         output["meta"] = generations
         output["inference"] = inferences
-
-        fw.write(json.dumps(output) + "\n")
+        if args.local_rank == 0:
+            fw.write(json.dumps(output) + "\n")
     fw.close()
 
     # ----------------------------------------------------- #
@@ -228,6 +254,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Run main.')
     parser.add_argument('--model_name', type=str)
+    parser.add_argument('--home_dir', type=str)
     parser.add_argument('--ckpt_dir', type=str)
     parser.add_argument('--tokenizer_path', type=str)
     parser.add_argument('--dataset', '-d', type=str)
@@ -239,6 +266,7 @@ if __name__ == "__main__":
     parser.add_argument('--split', type=int, default=0)
     parser.add_argument('--num_process', type=int, default=1)
     parser.add_argument("--debug", action='store_true')
+    parser.add_argument("--overwrite_prediction", action='store_true')
 
     # vlqa
     parser.add_argument('--vlqa_name', type=str)
@@ -248,6 +276,7 @@ if __name__ == "__main__":
     parser.add_argument('--max_vlqa_len', type=int, default=128)
  
     # decoding strategy
+    parser.add_argument('--instruct', type=str, default=None)
     parser.add_argument('--max_seq_len', type=int, default=2048)
     parser.add_argument('--max_gen_len', type=int, default=512)
     parser.add_argument('--sample', action='store_true')

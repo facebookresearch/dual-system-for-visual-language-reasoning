@@ -1,34 +1,31 @@
 #!/bin/bash
 
+home_dir="/private/home/peifengw"
 
-ckpt_dir='/large_experiments/fair_llm/genesis/consolidated_ckpts/30B_1.4T_consolidated_fp16_mp4'
-model_name='llama-30B'
-num_gpu=4
-# ckpt_dir='/large_experiments/fair_llm/genesis/consolidated_ckpts/70B_1.4T_consolidated_fp16_mp8'
-# model_name='llama-70B'
-# num_gpu=8
-tokenizer_path='/checkpoint/kshuster/projects/genesis/tokenizer_final_32k.minus_inf_ws.model'
+ckpt_dir="${home_dir}/llama/llama-2-70b"
+model_name='llama2-70B'
+tokenizer_path="${home_dir}/llama/tokenizer.model"
+num_gpu=8
 
-dataset="plotQA"
-prompt="cot_1shot"
-table_model="deplot_vqa"
-table_path="../chart2table/outputs/plotQA-test/google/deplot_vqa/inference_all.jsonl"
+dataset="dvQA"
+prompt="cot_5shot"
+table_path="${home_dir}/chart2table/outputs/dvQA-val_hard_qa_reasoning_10K/google/deplot_vqa/inference_all.jsonl"
 
 # sampling 
 top_k=0
 top_p=1.0
-temperature=1.0
+temperature=0.4
 num_beams=1
 eval_batch_size=1
 
-eval_splits=("qa_pairs_V1" "qa_pairs_V2")
-num_process=16
+eval_splits=("val_hard_qa_reasoning_10K")
+num_process=1
 for eval_split in ${eval_splits[@]};
 do
     for ((split=0; split<$num_process; split++));
     do
-        data_path="../datasets/PlotQA/${eval_split}.json"
-        output_prefix="outputs/${dataset}-${eval_split}/${table_model}-${prompt}_topK${top_k}_topP${top_p}_temp${temperature}_beam${num_beams}.${model_name}"
+        data_path="${home_dir}/datasets/dvqa/${eval_split}.jsonl"
+        output_prefix="${home_dir}/outputs/${dataset}-${eval_split}/deplot_${prompt}_topK${top_k}_topP${top_p}_temp${temperature}_beam${num_beams}.${model_name}"
         mkdir -p $output_prefix
         srun --partition=learnfair --constraint=volta32gb --gres=gpu:volta:${num_gpu} --time 2-00:00 --ntasks-per-node=1 --cpus-per-task=10 --mem=400G torchrun --nproc_per_node ${num_gpu}  --master_port 2970${split}\
             llama_prompting_tableQA.py \
