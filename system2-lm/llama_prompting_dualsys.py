@@ -165,21 +165,26 @@ def main(args):
         inferences = ["" for beam_id in range(args.num_beams)]
         beam_finish = [False for beam_id in range(args.num_beams)]
         cnt_query = 0
-        past_key_values = None
-        prev_pos = 0
+        batch_past_key_values = [None for batch_id in range(num_batch)]
+        batch_prev_pos = [0 for batch_id in range(num_batch)]
         while True:
             if args.debug or eid < 5:
                 print(input_seqs[0])
             all_batch_inferences = []
             for batch_id in range(num_batch):
                 batch_input_seqs = input_seqs[batch_id*args.eval_batch_size:min((batch_id+1)*args.eval_batch_size, args.num_beams)]
+                past_key_values = batch_past_key_values[batch_id]
+                prev_pos = batch_prev_pos[batch_id]
                 try:
                     batch_inferences, past_key_values, prev_pos = generator.generate_with_past(
                         batch_input_seqs, stop_tokens="\n", max_gen_len=args.max_gen_len, temperature=args.temperature, top_p=args.top_p, top_k=args.top_k, past_key_values=past_key_values, prev_pos=prev_pos,
                     )
-                except:
+                except Exception as e:
+                    print(e)
                     batch_inferences = ["" for beam_id in range(len(batch_input_seqs))]
                 all_batch_inferences.extend(batch_inferences)
+                batch_past_key_values[batch_id] = past_key_values 
+                batch_prev_pos[batch_id] = prev_pos 
 
             for beam_id in range(args.num_beams):
                 if not beam_finish[beam_id]:
@@ -202,36 +207,37 @@ def main(args):
                 if beam_finish[beam_id]:
                     continue
                 inference = all_batch_inferences[beam_id]
-                if "Let's" in inference:
-                    inference = "Q: " + inference.strip() + " A:"
-                    vl_inputs = processor(images=image, return_tensors="pt", add_special_tokens=True, max_patches=args.max_patches).to(args.device)
-                    question_ids = processor.tokenizer(text=[inference], return_tensors="pt", add_special_tokens=False).input_ids.to(args.device)
-                    input_length = len(question_ids[0])
-                    vl_output = model.generate(**vl_inputs, decoder_input_ids=question_ids, max_new_tokens=args.max_vlqa_len)[0]
-                    inference = processor.decode(vl_output[input_length+1:], skip_special_tokens=True)
-                    if "The x-axis shows: " in inference:
-                        xaxis = inference.split('The x-axis shows: ')[1]
-                        new_inference = inference.split('The x-axis shows: ')[0] + 'The x-axis shows: '
-                        visited = set()
-                        nxaxis = []
-                        for xi, x in enumerate(xaxis.split(' | ')):
-                            x = x.strip()
-                            if xi == len(xaxis.split(' | ')) - 1 and x.endswith('.'):
-                                x = x[:-1]
-                            if x in visited:
-                                continue
-                            visited.add(x)
-                            nxaxis.append(x)
-                        new_inference += " | ".join(nxaxis) + "."
-                        inference = new_inference
-                else:
-                    try:
-                        inference, past_key_values, prev_pos = generator.generate_with_past(
-                            [input_seqs[beam_id]], stop_tokens="\n", max_gen_len=args.max_gen_len, temperature=args.temperature, top_p=args.top_p, top_k=args.top_k,  past_key_values=past_key_values, prev_pos=prev_pos,
-                        )
-                    except:
-                        inference = [""]
-                    inference = inference[0]
+                # if "Let's" in inference:
+                inference = "Q: " + inference.strip() + " A:"
+                vl_inputs = processor(images=image, return_tensors="pt", add_special_tokens=True, max_patches=args.max_patches).to(args.device)
+                question_ids = processor.tokenizer(text=[inference], return_tensors="pt", add_special_tokens=False).input_ids.to(args.device)
+                input_length = len(question_ids[0])
+                vl_output = model.generate(**vl_inputs, decoder_input_ids=question_ids, max_new_tokens=args.max_vlqa_len)[0]
+                inference = processor.decode(vl_output[input_length+1:], skip_special_tokens=True)
+                if "The x-axis shows: " in inference:
+                    xaxis = inference.split('The x-axis shows: ')[1]
+                    new_inference = inference.split('The x-axis shows: ')[0] + 'The x-axis shows: '
+                    visited = set()
+                    nxaxis = []
+                    for xi, x in enumerate(xaxis.split(' | ')):
+                        x = x.strip()
+                        if xi == len(xaxis.split(' | ')) - 1 and x.endswith('.'):
+                            x = x[:-1]
+                        if x in visited:
+                            continue
+                        visited.add(x)
+                        nxaxis.append(x)
+                    new_inference += " | ".join(nxaxis) + "."
+                    inference = new_inference
+                # else:
+                #     try:
+                #         inference, past_key_values, prev_pos = generator.generate_with_past(
+                #             [input_seqs[beam_id]], stop_tokens="\n", max_gen_len=args.max_gen_len, temperature=args.temperature, top_p=args.top_p, top_k=args.top_k,  past_key_values=past_key_values, prev_pos=prev_pos,
+                #         )
+                #     except Exception as e:
+                #         print(e)
+                #         inference = [""]
+                #     inference = inference[0]
                 generations[beam_id] += inference.strip() + "\n"
 
                 input_seqs[beam_id] += inference.strip() + "\n"

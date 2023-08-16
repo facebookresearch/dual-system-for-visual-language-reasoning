@@ -119,6 +119,8 @@ class LLaMA:
         # prev_pos = 0
         all_finish = [False for beam in range(bsz)] 
         # past_key_values = None
+        min_prev_pos = None
+        min_past = None
         for cur_pos in range(start_pos, total_len):
             # print('generate token at:', cur_pos)
             logits, past_key_values = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos, past_key_values)
@@ -147,6 +149,9 @@ class LLaMA:
                     pass
                 if self.tokenizer.decode(t).endswith(stop_tokens):
                     all_finish[beam_id] = True
+                    if min_prev_pos is None:
+                        min_prev_pos = cur_pos
+                        min_past = past_key_values
 
             if all(all_finish):
                 break
@@ -165,7 +170,7 @@ class LLaMA:
             except:
                 print(t)
                 print(self.tokenizer.n_words)
-        return decoded, past_key_values, prev_pos
+        return decoded, min_past, min_prev_pos
 
 
 def sample_top_p(probs, p):

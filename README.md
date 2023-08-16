@@ -28,5 +28,5 @@ After training, the checkpoint of the vision module is saved to `$VISION_CHECKPO
 The scripts for different tasks are stored at `system2-lm/scripts`. To run the script,
 ```bash
 cd system2-lm
-./script/run_llama_vlqa_chartQA.sh
+./script/run_dualsys_chartQA.sh
 ```
