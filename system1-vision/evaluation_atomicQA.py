@@ -18,39 +18,6 @@ from data_helper_for_decoderQA import load_raw_dataset, load_ImageQA_dataset, Da
 # from generate import generation, generation_with_prefix
 
 
-def evaluate(dataloader, model, args):
-
-    model.eval()
-    epoch_iterator = tqdm(dataloader, desc="Eval Iteration")
-
-    loss_sum = 0.
-    ppl_sum = 0.
-    tokens_sum = 0.
-    for step, batch in enumerate(epoch_iterator):
-        labels = batch.pop("labels").to(args.device)
-        flattened_patches = batch.pop("flattened_patches").to(args.device)
-        attention_mask = batch.pop("attention_mask").to(args.device)
-        with torch.no_grad():
-            outputs = model(
-                        flattened_patches=flattened_patches,
-                        attention_mask=attention_mask,
-                        labels=labels,
-                    )
-            loss = outputs.loss
-
-            num_tokens = (labels != -100).sum().item()
-            tokens_sum += num_tokens
-            ppl_sum += outputs.loss.item() * num_tokens
-
-            loss_sum += loss.item()
-        if args.debug and step > 10:
-            break
-
-    loss_sum /= (step + 1)
-    ppl_sum = math.exp(ppl_sum / tokens_sum)
-
-    return {"loss": loss_sum, "perplexity": ppl_sum}
-
 def generate(split, dataloader, processor, model, args):
 
     model.eval()
@@ -114,26 +81,27 @@ def parse_dimension_answer(input):
 def main(args, seed):
     # ----------------------------------------------------- #
     # model
-    # processor = AutoProcessor.from_pretrained(args.model_name, cache_dir='../hg_cache')
-    # processor.image_processor.is_vqa = False
-    # model = Pix2StructForConditionalGeneration.from_pretrained(args.save_dir)
-    # model.to(args.device)
+    processor = AutoProcessor.from_pretrained(args.model_name, cache_dir=os.path.join(args.home_dir, 'hg_cache'))
+    processor.image_processor.is_vqa = False
+    model = Pix2StructForConditionalGeneration.from_pretrained(args.save_dir)
+    model.to(args.device)
 
     # ----------------------------------------------------- #
     # data
     evaluation_result = {}
     for split in ['test']:
-        # dataset = load_ImageQA_dataset(split, processor, args)
-        # data_loader = DataLoader(dataset,
-        #             shuffle=False,
-        #             collate_fn=Data_Collator_for_inference(processor, args),
-        #             batch_size=args.eval_batch_size,
-        # )
-        # generations = generate(split, data_loader, processor, model, args)
+        dataset = load_ImageQA_dataset(split, processor, args)
+        data_loader = DataLoader(dataset,
+                    shuffle=False,
+                    collate_fn=Data_Collator_for_inference(processor, args),
+                    batch_size=args.eval_batch_size,
+        )
+        generations = generate(split, data_loader, processor, model, args)
         # exact accuracy
 
-        with open(os.path.join(args.save_dir, 'generation_{}.txt'.format(split, args.max_dec_length)), 'r') as fr:
-            generations = [line.strip() for line in fr.readlines()]
+        # with open(os.path.join(args.save_dir, 'generation_{}.txt'.format(split, args.max_dec_length)), 'r') as fr:
+        #     generations = [line.strip() for line in fr.readlines()]
+
         examples = load_raw_dataset(split, args)
         assert len(examples) == len(generations)
         accuracy = 0.
@@ -196,20 +164,10 @@ def main(args, seed):
 
     print("Evaluation done!")
 
-    # ----------------------------------------------------- #
-    # loss & ppl
-    # return_result = {}
-    # for split in ['test']:
-    #     eval_result = evaluate(data_loaders[split], model, args)
-    #     log = '{} loss {:.4f}, perplexity {:.4f}'
-    #     print(log.format(split, eval_result["loss"], eval_result["perplexity"]))
-    #     return_result[split] = eval_result
-    # with open(os.path.join(args.save_dir, 'evaluation_results.json'), 'w') as fw:
-    #     json.dump(return_result, fw, indent=4)
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Run main.')
+    parser.add_argument('--home_dir', type=str)
     parser.add_argument('--image_dir', type=str)
     parser.add_argument('--dataset', '-d', type=str)
     parser.add_argument('--save_dir', '-o', type=str)

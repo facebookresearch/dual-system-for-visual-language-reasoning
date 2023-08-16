@@ -14,7 +14,7 @@ num_gpu=1
 save_dir=$1
 
 srun --partition=learnfair --constraint=volta32gb --gres=gpu:volta:${num_gpu} --time 2-00:00 --ntasks-per-node=1 --cpus-per-task=10 --mem=400G torchrun --nproc_per_node ${num_gpu} python \
-    evaluation_chartQA.py \
+    evaluation_atomicQA.py \
     --image_dir_chartQA $image_dir_chartQA \
     --image_dir_plotQA $image_dir_plotQA \
     --dataset $dataset \
