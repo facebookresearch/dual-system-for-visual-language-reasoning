@@ -44,9 +44,12 @@ def main(args):
         if isinstance(example["inference"], list):
             prediction_list = []
             for generation in example["inference"]:
-                prediction_list.append(parse_prediction(generation))
-            
-            prediction = majority_vote(prediction_list)
+                if not parse_prediction(generation) == "":
+                    prediction_list.append(parse_prediction(generation))
+            if len(prediction_list) > 0: 
+                prediction = majority_vote(prediction_list)
+            else:
+                prediction = ""
         else:
             generation = example["inference"]
             prediction = parse_prediction(generation)
