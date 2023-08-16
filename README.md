@@ -20,7 +20,7 @@ Code folders:
 cd system1-vision
 sbatch ./scripts/run_multinode.sh 
 ```
-After training, the checkpoint of the vision module is saved to `$VISION_CHECKPOINT='./checkpoint` for later use.
+After training, the checkpoint of the vision module is saved to `$VISION_CHECKPOINT='./checkpoint'` for later use.
 
 ## Prompting LM for downstream tasks
 
