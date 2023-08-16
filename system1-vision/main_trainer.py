@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import argparse
 from tqdm import tqdm, trange
 import numpy as np
@@ -14,7 +15,7 @@ from transformers import Trainer, TrainingArguments
 from transformers import set_seed, AutoProcessor, Pix2StructForConditionalGeneration, get_cosine_schedule_with_warmup 
 from transformers.optimization import Adafactor
 
-from data_helper_for_vqa import load_ImageQA_dataset, Data_Collator
+from data_helper_for_decoderQA import load_ImageQA_dataset, Data_Collator
 
 def main(args, seed):
     # ----------------------------------------------------- #
@@ -25,6 +26,9 @@ def main(args, seed):
     if ddp:
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
         gradient_accumulation_steps = gradient_accumulation_steps // world_size
+        if int(os.environ.get("LOCAL_RANK", -1)) > 0:
+            sys.stdout = open(os.devnull, "w")
+
     training_args = TrainingArguments(
             per_device_train_batch_size=args.micro_batch_size,
             per_device_eval_batch_size=args.micro_batch_size*2,
@@ -33,9 +37,9 @@ def main(args, seed):
             max_steps=args.num_training_steps,
             learning_rate=args.learning_rate,
             weight_decay=args.weight_decay,
-            fp16=True,
+            fp16=False,
             logging_steps=10,
-            optim="adafactor",
+            optim="adamw_hf",
             lr_scheduler_type="cosine",
             evaluation_strategy="steps",
             save_strategy="steps",
@@ -51,13 +55,13 @@ def main(args, seed):
 
     # ----------------------------------------------------- #
     # model
-    processor = AutoProcessor.from_pretrained(args.model_name, cache_dir='../hg_cache')
+    processor = AutoProcessor.from_pretrained(args.model_name, cache_dir=os.path.join(args.home_dir, 'hg_cache'))
     processor.image_processor.is_vqa = False
     if args.resume_from_checkpoint:
         print('Resuming from:', args.resume_from_checkpoint)
         model = Pix2StructForConditionalGeneration.from_pretrained(args.resume_from_checkpoint)
     else:
-        model = Pix2StructForConditionalGeneration.from_pretrained(args.model_name, cache_dir='../hg_cache')
+        model = Pix2StructForConditionalGeneration.from_pretrained(args.model_name, cache_dir=os.path.join(args.home_dir, 'hg_cache'))
     # model.to(args.device)
 
     # ----------------------------------------------------- #
@@ -79,16 +83,15 @@ def main(args, seed):
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
     # ----------------------------------------------------- #
     return_result = {}
-    # model.load_state_dict(torch.load(model_ckpt)['ckpt'])
-    # test_result = evaluate(test_dataloader, model, args)
-    # log = 'Epoch: {:03d}, test loss {:.4f}, perplexity {:.4f}'
-    # logger.info(log.format(-1, test_result["loss"], test_result["perplexity"]))
     return return_result
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Run main.')
+    parser.add_argument('--home_dir', type=str)
     parser.add_argument('--image_dir', type=str)
+    parser.add_argument('--image_dir_chartQA', type=str)
+    parser.add_argument('--image_dir_plotQA', type=str)
     parser.add_argument('--dataset', '-d', type=str)
     parser.add_argument('--save_dir', '-o', type=str)
     parser.add_argument('--resume_from_checkpoint', type=str, default=None)
@@ -131,18 +134,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args.device = torch.device('cuda:{}'.format(args.gpu))
 
+    args.image_dirs = {"chartQA": args.image_dir_chartQA, "plotQA": args.image_dir_plotQA}
+
     seed = 42
     set_seed(seed)
     eval_result = main(args, seed)
-    # for split in eval_result:
-    #         if split not in eval_result_all_split:
-    #             eval_result_all_split[split] = []
-    #         eval_result_all_split[split].append(eval_result[split])
-    # output_result = {}
-    # for split in eval_result_all_split:
-    #     output_result[split] = {
-    #             "accuracy_mean": np.mean(eval_result_all_split[split]),
-    #             "accuracy_std": np.std(eval_result_all_split[split]),
-    #     }
-    # with open(os.path.join(args.save_dir, 'evaluation_results.json'), 'w') as fw:
-    #     json.dump(output_result, fw, indent=4)

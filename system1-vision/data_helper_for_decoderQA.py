@@ -29,7 +29,7 @@ class ImageQA_Dataset(Dataset):
         return encoding 
 
 def load_raw_dataset(split, args):
-    data_path = os.path.join('./data', args.dataset, '{}.jsonl'.format(split))
+    data_path = os.path.join(args.dataset, '{}.jsonl'.format(split))
     dataset = []
 
     with open(data_path, 'r') as fr:
@@ -39,7 +39,7 @@ def load_raw_dataset(split, args):
     return dataset
 
 def load_ImageQA_dataset(split, processor, args):
-    data_path = os.path.join('./data', args.dataset, '{}.jsonl'.format(split))
+    data_path = os.path.join(args.dataset, '{}.jsonl'.format(split))
     dataset = []
 
     with open(data_path, 'r') as fr:
