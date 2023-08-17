@@ -8,7 +8,7 @@ tokenizer_path="${home_dir}/llama/tokenizer.model"
 num_gpu=8
 
 dataset="dvQA"
-prompt="cot_5shot"
+prompt="cot_5shot_dvqa"
 table_path="${home_dir}/chart2table/outputs/dvQA-val_hard_qa_reasoning_10K/google/deplot_vqa/inference_all.jsonl"
 
 # sampling 

@@ -12,7 +12,7 @@ num_gpu=8
 
 dataset="dvQA"
 image_dir="${home_dir}/datasets/dvqa/images"
-prompt="cot_5shot"
+prompt="cot_5shot_dvqa"
 
 # vlqa model
 vlqa_name='google/deplot'

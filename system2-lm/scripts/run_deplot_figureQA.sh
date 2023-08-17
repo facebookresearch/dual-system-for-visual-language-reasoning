@@ -8,7 +8,7 @@ tokenizer_path="${home_dir}/llama/tokenizer.model"
 num_gpu=8
 
 dataset="figureQA"
-prompt="cot_5shot"
+prompt="cot_5shot_figureqa"
 
 # sampling 
 top_k=0
