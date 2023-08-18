@@ -2,17 +2,17 @@
 
 home_dir="/private/home/peifengw"
 
-model_name='finetuned_llama2_cot_replace100_seed42'
-ckpt_dir="${home_dir}/checkpoints/finetuned_llama2_fixseed/70B_chartplot_replace100_seed42"
-# model_name='llama2-70B'
-# ckpt_dir="${home_dir}/llama/llama-2-70b"
+# model_name='finetuned_llama2_cot_replace100_seed42'
+# ckpt_dir="${home_dir}/checkpoints/finetuned_llama2_fixseed/70B_chartplot_replace100_seed42"
+model_name='llama2-70B'
+ckpt_dir="${home_dir}/llama/llama-2-70b"
 
 tokenizer_path="${home_dir}/llama/tokenizer.model"
 num_gpu=8
 
 dataset="chartQA"
 image_dir="${home_dir}/datasets/ChartQA/Dataset/test/png/"
-prompt="cot_5shot"
+prompt="cot_5shot_chartqa"
 
 # vlqa model
 vlqa_name='google/deplot'

@@ -43,39 +43,40 @@ def generate(split, dataloader, processor, model, args):
                 generated_texts.append(gen_text)
     return generated_texts 
 
-def parse_group_answer(input):
-    if input.endswith('.'):
-        input = input[:-1]
-    output = set([span.strip() for span in input.replace("?", "").replace("There are ", "").split(",")])
-    return output
+def parse_desc_answer(input):
+    input_spans = input.split(". The x-axis shows:")
+    if "The figure shows the data of: " in input_spans[0]:
+        legend_span = input_spans[0].split("The figure shows the data of: ")[1]
+        legend_output = set([span.strip() for span in legend_span.split(" | ")])
+    else:
+        legend_output = set()
+    if len(input_spans) > 1:
+        xaxis_span = input_spans[1]
+        if xaxis_span.endswith('.'):
+            xaxis_span = xaxis_span[:-1]
+        xaxis_output = set([span.strip() for span in xaxis_span.split(" | ")])
+    else:
+        xaxis_output = set()
+    return legend_output, xaxis_output 
 
 def parse_row_column_answer(input):
     if input.endswith('.'):
         input = input[:-1]
-    output = set([span.strip() for span in input.replace("?", "").replace("The values are ", "").split(",")])
-    return output
-
-def parse_color_answer(input):
-    if input.endswith('.'):
-        input = input[:-1]
-    if "represented by" in input:
-        output = input.split("represented by")[1].strip()
-    elif "represents" in input:
-        output = input.split("represents")[1].strip()
-    elif "represent" in input:
-        output = input.split("represent")[1].strip()
-    if "indicates" in input:
-        output = input.split("indicates")[1].strip()
+    if "The data is " in input:
+        answer = input.split("The data is ")[1]
+        output = set([span.strip() for span in answer.split(",")])
+    else:
+        output = set()
     return output
 
 def parse_element_answer(input):
     if input.endswith('.'):
         input = input[:-1]
-    output = input.replace("?", "").replace("The value is ", "").strip()
-    return output
-
-def parse_dimension_answer(input):
-    output = 2 if '2' in input else 1 
+    if "The data is " in input:
+        answer = input.split("The data is ")[1]
+        output = answer.strip()
+    else:
+        output = ""
     return output
 
 def main(args, seed):
@@ -97,68 +98,50 @@ def main(args, seed):
                     batch_size=args.eval_batch_size,
         )
         generations = generate(split, data_loader, processor, model, args)
-        # exact accuracy
 
-        # with open(os.path.join(args.save_dir, 'generation_{}.txt'.format(split, args.max_dec_length)), 'r') as fr:
+        # with open(os.path.join(args.save_dir, 'generation_{}_len{}.txt'.format(split, args.max_dec_length)), 'r') as fr:
         #     generations = [line.strip() for line in fr.readlines()]
 
         examples = load_raw_dataset(split, args)
         assert len(examples) == len(generations)
-        accuracy = 0.
-        accuracy_by_type = {"row/column": [], "element": [], "group": []}
-        debug_file = open(os.path.join(args.save_dir, 'debug_{}.jsonl'.format(split, args.max_dec_length)), 'w')
+        accuracy_by_type = {"row/column": [], "element": [], "desc": []}
+        # debug_file = open(os.path.join(args.save_dir, 'debug_{}.jsonl'.format(split, args.max_dec_length)), 'w')
         for example, generation in zip(examples, generations):
-            if example["type"] == "group":
-                answer = parse_group_answer(example["answer"])
-                prediction = parse_group_answer(generation)
-                if answer == prediction:
-                    accuracy += 1
-                    accuracy_by_type["group"].append(1.)
-                else:
-                    accuracy_by_type["group"].append(0.)
+            if example["type"] == "header" or example["type"] == "desc":
+                legend_answer, xaxis_answer = parse_desc_answer(example["answer"])
+                legend_prediction, xaxis_prediction = parse_desc_answer(generation)
+                if len(legend_answer) != 0 and len(xaxis_answer) != 0:
+                    legend_acc = len(legend_answer.intersection(legend_prediction)) * 1.0 / len(legend_answer)
+                    xaxis_acc = len(xaxis_answer.intersection(xaxis_prediction)) * 1.0 / len(xaxis_answer)
+                    acc = (legend_acc + xaxis_acc) / 2.0
+                    accuracy_by_type["desc"].append(acc)
             elif example["type"] == "row/column":
                 answer = parse_row_column_answer(example["answer"])
                 prediction = parse_row_column_answer(generation)
-                if answer == prediction:
-                    accuracy += 1
-                    accuracy_by_type["row/column"].append(1.)
-                else:
-                    accuracy_by_type["row/column"].append(0.)
-            elif example["type"] == "color":
-                answer = parse_color_answer(example["answer"])
-                prediction = parse_color_answer(generation)
-                if answer == prediction:
-                    accuracy += 1
-                    accuracy_by_type["color"].append(1.)
-                else:
-                    accuracy_by_type["color"].append(0.)
-            elif example["type"] == "dimension":
-                answer = parse_dimension_answer(example["answer"])
-                prediction = parse_dimension_answer(generation)
-                if answer == prediction:
-                    accuracy += 1
-                    accuracy_by_type["dimension"].append(1.)
-                else:
-                    accuracy_by_type["dimension"].append(0.)
+                if len(answer) != 0:
+                    acc = len(answer.intersection(prediction)) * 1.0 / len(answer)
+                    accuracy_by_type["row/column"].append(acc)
             else: # example["type"] == "element":
+                assert example["type"] == "element", example["type"]
                 answer = parse_element_answer(example["answer"])
                 prediction = parse_element_answer(generation)
                 if answer == prediction:
-                    accuracy += 1
                     accuracy_by_type["element"].append(1.)
                 else:
                     accuracy_by_type["element"].append(0.)
-            if not answer == prediction:
-                debug_file.write(json.dumps({"id": example["id"], "answer": example["answer"], "prediction": generation, "question": example["question"]}) + "\n")
+            # if not answer == prediction:
+            #     debug_file.write(json.dumps({"id": example["id"], "answer": example["answer"], "prediction": generation, "question": example["question"]}) + "\n")
 
-        accuracy /= len(examples)
-        evaluation_result[split] = {"overall accuracy": accuracy * 100.}
+        evaluation_result[split] = {}
+        accuracy = 0.
         for type in accuracy_by_type:
             accuracy_by_type[type] = sum(accuracy_by_type[type]) * 100. / len(accuracy_by_type[type])
             evaluation_result[split][type] = accuracy_by_type[type] 
+            accuracy += accuracy_by_type[type]
+        evaluation_result[split]["overall_accuracy"] = accuracy / len(accuracy_by_type)
         
-        debug_file.close()
-    result_file = os.path.join(args.save_dir, 'evaluation_{}_len{}.json'.format(args.dataset, args.max_dec_length))
+        # debug_file.close()
+    result_file = os.path.join(args.save_dir, 'evaluation_len{}.json'.format(args.max_dec_length))
     with open(result_file, 'w') as fw:
         json.dump(evaluation_result, fw, indent=4)
 
@@ -169,6 +152,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run main.')
     parser.add_argument('--home_dir', type=str)
     parser.add_argument('--image_dir', type=str)
+    parser.add_argument('--image_dir_chartQA', type=str)
+    parser.add_argument('--image_dir_plotQA', type=str)
     parser.add_argument('--dataset', '-d', type=str)
     parser.add_argument('--save_dir', '-o', type=str)
     parser.add_argument("--debug", action='store_true')
@@ -208,6 +193,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     args.device = torch.device('cuda:{}'.format(args.gpu))
+    args.image_dirs = {"chartQA": args.image_dir_chartQA, "plotQA": args.image_dir_plotQA}
 
     seed = 42
     set_seed(seed)
