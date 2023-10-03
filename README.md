@@ -51,7 +51,7 @@ cd system2-lm
 Please cite our paper if DOMINO is used in your work:
 
 ```bibtex 
-@misc{wang2023shepherd,
+@misc{wang2023domino,
       title={DOMINO: A Dual-System for Multi-step Visual Language Reasoning}, 
       author={Peifeng Wang and Olga Golovneca and Armen Aghajanyan and Xiang Ren and Muhao Chen and Asli Celikyilmaz and Maryam Fazel-Zarandi},
       year={2023},
