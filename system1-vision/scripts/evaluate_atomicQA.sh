@@ -1,6 +1,6 @@
 #!/bin/bash
 
-home_dir="/private/home/peifengw"
+home_dir=$1
 
 image_dir_chartQA="${home_dir}/datasets/ChartQA/Dataset/train/png/"
 image_dir_plotQA="${home_dir}/datasets/PlotQA/png/train/"
@@ -13,7 +13,7 @@ num_gpu=1
 
 save_dir="${home_dir}/checkpoints/finetuned_deplot"
 
-srun --partition=learnfair --constraint=volta32gb --gres=gpu:volta:${num_gpu} --time 2-00:00 --ntasks-per-node=1 --cpus-per-task=10 --mem=400G torchrun --nproc_per_node ${num_gpu} \
+torchrun --nproc_per_node ${num_gpu} \
     evaluation_atomicQA.py \
     --home_dir $home_dir \
     --image_dir_chartQA $image_dir_chartQA \

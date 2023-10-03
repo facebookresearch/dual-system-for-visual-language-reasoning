@@ -19,7 +19,7 @@ class LLaMA:
     def generate(
         self,
         prompts: List[str],
-        stop_tokens: str = '\n\n',
+        stop_tokens: str = "\n\n",
         max_gen_len: int = 128,
         temperature: float = 0,
         top_p: float = 1.0,
@@ -34,7 +34,6 @@ class LLaMA:
         min_prompt_size = min([len(t) for t in prompt_tokens])
         max_prompt_size = max([len(t) for t in prompt_tokens])
 
-        # total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
         total_len = max_gen_len + max_prompt_size
 
         tokens = torch.full((bsz, total_len), self.tokenizer.pad_id).cuda().long()
@@ -43,7 +42,7 @@ class LLaMA:
         input_text_mask = tokens != self.tokenizer.pad_id
         start_pos = min_prompt_size
         prev_pos = 0
-        all_finish = [False for beam in range(bsz)] 
+        all_finish = [False for beam in range(bsz)]
         for cur_pos in range(start_pos, total_len):
             logits = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
             if top_p < 1.0 or top_k > 0:
@@ -62,7 +61,10 @@ class LLaMA:
             prev_pos = cur_pos
 
             for beam_id, beam in enumerate(tokens.tolist()):
-                t = beam[len(prompt_tokens[beam_id]): len(prompt_tokens[beam_id]) + max_gen_len]
+                t = beam[
+                    len(prompt_tokens[beam_id]) : len(prompt_tokens[beam_id])
+                    + max_gen_len
+                ]
                 # cut to eos tok if any
                 try:
                     t = t[: t.index(self.tokenizer.pad_id)]
@@ -77,7 +79,7 @@ class LLaMA:
         decoded = []
         for i, t in enumerate(tokens.tolist()):
             # cut to max gen len
-            t = t[len(prompt_tokens[i]): len(prompt_tokens[i]) + max_gen_len]
+            t = t[len(prompt_tokens[i]) : len(prompt_tokens[i]) + max_gen_len]
             # cut to eos tok if any
             try:
                 t = t[: t.index(self.tokenizer.pad_id)]
@@ -89,12 +91,12 @@ class LLaMA:
     def generate_with_past(
         self,
         prompts: List[str],
-        stop_tokens: str = '\n\n',
+        stop_tokens: str = "\n\n",
         max_gen_len: int = 128,
         temperature: float = 0,
         top_p: float = 1.0,
         top_k: float = 0,
-        past_key_values: Optional[List[torch.FloatTensor]] = None, 
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
         prev_pos: int = 0,
     ) -> List[str]:
         bsz = len(prompts)
@@ -109,26 +111,29 @@ class LLaMA:
             return ["" for seq in range(bsz)], past_key_values, prev_pos
 
         total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
-        # total_len = max_gen_len + max_prompt_size
 
         tokens = torch.full((bsz, total_len), self.tokenizer.pad_id).cuda().long()
         for k, t in enumerate(prompt_tokens):
             tokens[k, : len(t)] = torch.tensor(t).long()
         input_text_mask = tokens != self.tokenizer.pad_id
         start_pos = min_prompt_size
-        # prev_pos = 0
-        all_finish = [False for beam in range(bsz)] 
-        # past_key_values = None
+        if prev_pos >= start_pos:
+            return [""] * bsz, past_key_values, prev_pos
+
+        all_finish = [False for beam in range(bsz)]
         min_prev_pos = None
         min_past = None
         for cur_pos in range(start_pos, total_len):
             # print('generate token at:', cur_pos)
-            logits, past_key_values = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos, past_key_values)
+            logits, past_key_values = self.model.forward(
+                tokens[:, prev_pos:cur_pos], prev_pos, past_key_values
+            )
             if top_p < 1.0 or top_k > 0 or temperature < 1.0:
                 log_probs = F.log_softmax(logits / temperature, dim=-1)
-                # next_token = sample_top_p(probs, top_p)
                 if top_p < 1.0 or top_k > 0:
-                    log_probs = top_k_top_p_filtering(log_probs, top_k=top_k, top_p=top_p)
+                    log_probs = top_k_top_p_filtering(
+                        log_probs, top_k=top_k, top_p=top_p
+                    )
                 next_token = torch.multinomial(torch.exp(log_probs), num_samples=1)
             else:
                 next_token = torch.argmax(logits, dim=-1)
@@ -141,7 +146,10 @@ class LLaMA:
             prev_pos = cur_pos
 
             for beam_id, beam in enumerate(tokens.tolist()):
-                t = beam[len(prompt_tokens[beam_id]): len(prompt_tokens[beam_id]) + max_gen_len]
+                t = beam[
+                    len(prompt_tokens[beam_id]) : len(prompt_tokens[beam_id])
+                    + max_gen_len
+                ]
                 # cut to eos tok if any
                 try:
                     t = t[: t.index(self.tokenizer.pad_id)]
@@ -159,7 +167,7 @@ class LLaMA:
         decoded = []
         for i, t in enumerate(tokens.tolist()):
             # cut to max gen len
-            t = t[len(prompt_tokens[i]): len(prompt_tokens[i]) + max_gen_len]
+            t = t[len(prompt_tokens[i]) : len(prompt_tokens[i]) + max_gen_len]
             # cut to eos tok if any
             try:
                 t = t[: t.index(self.tokenizer.pad_id)]

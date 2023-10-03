@@ -4,20 +4,18 @@
 #SBATCH --nodes=8
 #SBATCH --ntasks=8
 #SBATCH --gpus-per-task=8
-#SBATCH --cpus-per-task=40
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=400GB
 #SBATCH --output=./logs/output_%j.txt
 #SBATCH --error=./logs/error_%j.txt
-#SBATCH --partition=learnfair
 #SBATCH --time=2-00:00
-#SBATCH --constraint=volta32gb
 
 nodes=( $( scontrol show hostnames $SLURM_JOB_NODELIST ) )
 nodes_array=($nodes)
 head_node=${nodes_array[0]}
 head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
 
-home_dir="/private/home/peifengw"
+home_dir=$1
 
 num_gpu=8
 num_nodes=8
@@ -35,9 +33,6 @@ save_dir="${home_dir}/outputs/checkpoints/finetuned_${model_name}_bs${train_batc
 mkdir -p $save_dir
 echo Node IP: $head_node_ip
 export LOGLEVEL=INFO
-
-# resume_from_checkpoint=$1
-    # --resume_from_checkpoint $resume_from_checkpoint \
 
 srun torchrun --nnodes $num_nodes --nproc_per_node $num_gpu --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $head_node_ip:29700 \
     main_trainer.py \

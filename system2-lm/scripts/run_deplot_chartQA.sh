@@ -1,6 +1,6 @@
 #!/bin/bash
 
-home_dir="/private/home/peifengw"
+home_dir=$1
 
 ckpt_dir="${home_dir}/llama/llama-2-70b"
 model_name='llama2-70B'
@@ -24,8 +24,8 @@ do
     data_path="${home_dir}/datasets/ChartQA/Dataset/test/${eval_split}.jsonl"
     output_prefix="${home_dir}/outputs/${dataset}-${eval_split}/deplot_${prompt}_topK${top_k}_topP${top_p}_temp${temperature}_beam${num_beams}_${model_name}"
     mkdir -p $output_prefix
-    srun --partition=learnfair --constraint=volta32gb --gres=gpu:volta:${num_gpu} --time 2-00:00 --ntasks-per-node=1 --cpus-per-task=10 --mem=400G torchrun --nproc_per_node ${num_gpu} \
-        llama_prompting_tableQA.py \
+    torchrun --nproc_per_node ${num_gpu} \
+        llama_prompting_tableQA_gpt.py \
         --data_path $data_path \
         --table_path $table_path \
         --ckpt_dir $ckpt_dir \

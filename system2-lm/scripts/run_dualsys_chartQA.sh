@@ -1,9 +1,8 @@
 #!/bin/bash
 
-home_dir="/private/home/peifengw"
+home_dir=$1
+home_dir="/checkpoint/maryamfazel/peifeng/peifengw"
 
-# model_name='finetuned_llama2_cot_replace100_seed42'
-# ckpt_dir="${home_dir}/checkpoints/finetuned_llama2_fixseed/70B_chartplot_replace100_seed42"
 model_name='llama2-70B'
 ckpt_dir="${home_dir}/llama/llama-2-70b"
 
@@ -36,8 +35,7 @@ do
     do
         data_path="${home_dir}/datasets/ChartQA/Dataset/test/${eval_split}.jsonl"
         output_prefix="${home_dir}/outputs/${dataset}-${eval_split}/dual_${model_name}_${prompt}_topK${top_k}_topP${top_p}_temp${temperature}_beam${num_beams}"
-        mkdir -p $output_prefix
-        srun --partition=learnfair --constraint=volta32gb --gres=gpu:volta:${num_gpu} --time 2-00:00 --ntasks-per-node=1 --cpus-per-task=40 --mem=400G torchrun --nproc_per_node ${num_gpu} --master_port 302${split_idx}${split} \
+        torchrun --nproc_per_node ${num_gpu} --master_port 302${split_idx}${split} \
             llama_prompting_dualsys.py \
             --home_dir $home_dir \
             --data_path $data_path \

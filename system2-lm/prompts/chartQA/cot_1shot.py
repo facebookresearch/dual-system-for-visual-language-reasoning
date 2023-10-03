@@ -44,7 +44,7 @@ A: Let's describe the figure.
 The figure shows the data of: Democrats (brown) | Republicans (dark blue) | Independents (green). The x-axis shows: 2004 | 2006 | 2007 | 2009 | 2011 | 2012 | 2013.
 Let's extract the data of 2007.
 The data is 59.0 in Democrats, 38.0 in Republicans, 45.0 in Independents.
-45.0 is the second highest. 45.0 is the number of Independents. So the answer is Independents
+45.0 is the second highest. 45.0 is the number of Independents. So the answer is Independents.
 
 Q: {question}
 A:

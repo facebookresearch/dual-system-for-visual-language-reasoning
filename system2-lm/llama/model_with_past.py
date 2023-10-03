@@ -73,6 +73,7 @@ def apply_rotary_emb(
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
+
 def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
     """torch.repeat_interleave(x, dim=2, repeats=n_rep)"""
     bs, slen, n_kv_heads, head_dim = x.shape
@@ -83,6 +84,7 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
         .expand(bs, slen, n_kv_heads, n_rep, head_dim)
         .reshape(bs, slen, n_kv_heads * n_rep, head_dim)
     )
+
 
 class Attention(nn.Module):
     def __init__(self, args: ModelArgs):
@@ -134,7 +136,14 @@ class Attention(nn.Module):
         #     (args.max_batch_size, args.max_seq_len, self.n_local_heads, self.head_dim)
         # ).cuda()
 
-    def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor], past_key_value: Optional[Tuple[torch.Tensor]] = None):
+    def forward(
+        self,
+        x: torch.Tensor,
+        start_pos: int,
+        freqs_cis: torch.Tensor,
+        mask: Optional[torch.Tensor],
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    ):
         bsz, seqlen, _ = x.shape
         xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
 
@@ -165,7 +174,7 @@ class Attention(nn.Module):
         values = repeat_kv(values, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
         keys = keys.transpose(1, 2)
         values = values.transpose(1, 2)
- 
+
         # self.cache_k = self.cache_k.to(xq)
         # self.cache_v = self.cache_v.to(xq)
 
@@ -180,9 +189,7 @@ class Attention(nn.Module):
             scores = scores + mask  # (bs, n_local_heads, slen, cache_len + slen)
         scores = F.softmax(scores.float(), dim=-1).type_as(xq)
         output = torch.matmul(scores, values)  # (bs, n_local_heads, slen, head_dim)
-        output = output.transpose(
-            1, 2
-        ).contiguous().view(bsz, seqlen, -1)
+        output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
 
         return self.wo(output), past_key_value
 
@@ -224,14 +231,26 @@ class TransformerBlock(nn.Module):
         self.head_dim = args.dim // args.n_heads
         self.attention = Attention(args)
         self.feed_forward = FeedForward(
-            dim=args.dim, hidden_dim=4 * args.dim, multiple_of=args.multiple_of, ffn_dim_multiplier=args.ffn_dim_multiplier,
+            dim=args.dim,
+            hidden_dim=4 * args.dim,
+            multiple_of=args.multiple_of,
+            ffn_dim_multiplier=args.ffn_dim_multiplier,
         )
         self.layer_id = layer_id
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
 
-    def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor], past_key_value: Optional[Tuple[torch.Tensor]] = None,):
-        hidden_states, present_key_value = self.attention.forward(self.attention_norm(x), start_pos, freqs_cis, mask, past_key_value)
+    def forward(
+        self,
+        x: torch.Tensor,
+        start_pos: int,
+        freqs_cis: torch.Tensor,
+        mask: Optional[torch.Tensor],
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    ):
+        hidden_states, present_key_value = self.attention.forward(
+            self.attention_norm(x), start_pos, freqs_cis, mask, past_key_value
+        )
         h = x + hidden_states
         out = h + self.feed_forward.forward(self.ffn_norm(h))
         return out, present_key_value
@@ -262,10 +281,15 @@ class Transformer(nn.Module):
         )
 
     @torch.inference_mode()
-    def forward(self, tokens: torch.Tensor, start_pos: int, past_key_values: Optional[List[torch.FloatTensor]] = None):
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        start_pos: int,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+    ):
         r"""
         past_key_values: Tuple of `tuple(torch.FloatTensor)` of length `config.n_layers`, with each tuple having 2 tensors of
-                shape `(batch_size, num_heads, sequence_length, embed_size_per_head)`) 
+                shape `(batch_size, num_heads, sequence_length, embed_size_per_head)`)
         """
         _bsz, seqlen = tokens.shape
 
@@ -277,13 +301,17 @@ class Transformer(nn.Module):
 
         mask = None
         if seqlen > 1:
-            mask = torch.full((1, 1, seqlen, seqlen+start_pos), float("-inf"), device=tokens.device)
+            mask = torch.full(
+                (1, 1, seqlen, seqlen + start_pos), float("-inf"), device=tokens.device
+            )
             mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
 
         next_decoder_cache = ()
         for layer_id, layer in enumerate(self.layers):
             # print('pass at layer:', layer_id)
-            past_key_value = past_key_values[layer_id] if past_key_values is not None else None
+            past_key_value = (
+                past_key_values[layer_id] if past_key_values is not None else None
+            )
             h, past = layer(h, start_pos, freqs_cis, mask, past_key_value)
             next_decoder_cache += (past,)
         h = self.norm(h)

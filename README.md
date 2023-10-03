@@ -1,6 +1,6 @@
 # dual-system-for-visual-language-reasoning
 
-This is a Pytorch implementation for Peifeng's internship project.
+This is a Pytorch implementation for DOMINO: A Dual-System for Multi-step \\Visual Language Reasoning.
 
 Code folders:
 
@@ -14,12 +14,17 @@ Code folders:
 - PyTorch == 1.12.1
 - transformers == 4.29.2
 - fairscale == 0.4.6
+- sentencepiece == 0.1.99
+
+## Data
+
+
 
 ## Fine-tuning a vision module for visual information extraction
 
 ```bash
 cd system1-vision
-sbatch ./scripts/finetune_deplot.sh 
+sbatch ./scripts/finetune_deplot.sh <HOME_DIR>
 ```
 After training, the checkpoint of the vision module is saved to `$VISION_CHECKPOINT='HOME_DIR/outputs/checkpoint'` for later use.
 
