@@ -1,7 +1,6 @@
 #!/bin/bash
 
 home_dir=$1
-home_dir="/checkpoint/maryamfazel/peifeng/peifengw"
 
 model_name='llama2-70B'
 ckpt_dir="${home_dir}/llama/llama-2-70b"
