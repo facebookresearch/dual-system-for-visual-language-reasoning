@@ -1,6 +1,6 @@
 # DOMINO: A Dual-System for Multi-step Visual Language Reasoning
 
-This is a Pytorch implementation for [DOMINO: A Dual-System for Multi-step Visual Language Reasoning]().
+This is a Pytorch implementation for [DOMINO: A Dual-System for Multi-step Visual Language Reasoning](https://arxiv.org/abs/2310.02804).
 
 #### TL;DR: We propose a dual-system for multi-step visual language reasoning called DOMINO which outperforms existing models on challenging chart question answering datasets. 
 
