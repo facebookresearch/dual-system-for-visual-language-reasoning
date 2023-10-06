@@ -46,6 +46,11 @@ cd system2-lm
 ./script/run_dualsys_chartQA.sh <HOME_DIR>
 ```
 
+## License
+
+The code is [CC-BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) licensed, as found in the LICENSE file.
+
+
 ## Citation
 
 Please cite our paper if DOMINO is used in your work:
